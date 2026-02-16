@@ -2,8 +2,6 @@ from math import gcd
 from collections import deque
 
 def is_possible(jug1_cap, jug2_cap, target):
-    if target > max(jug1_cap, jug2_cap):
-        return False
     if target % gcd(jug1_cap, jug2_cap) != 0:
         return False
     return True
@@ -60,9 +58,14 @@ def bfs(start, target, jug1_cap, jug2_cap):
     return None
 
 
+
 jug1_cap = int(input("Enter capacity of jug1: "))
 jug2_cap = int(input("Enter capacity of jug2: "))
 target = int(input("Enter required amount: "))
+
+if(target < 0 or jug1_cap < 0 or jug2_cap < 0 or target > max(jug1_cap, jug2_cap)):
+    print("\nInvalid input.")
+    
 
 if is_possible(jug1_cap, jug2_cap, target):
     start = (0, 0)
@@ -70,4 +73,4 @@ if is_possible(jug1_cap, jug2_cap, target):
     if not result:
         print("\nNo solution found.")
 else:
-    print("\nInvalid input.")
+    print("\nSolution not possible.")

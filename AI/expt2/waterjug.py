@@ -1,23 +1,25 @@
 from math import gcd
 
 def is_possible(jug1_cap, jug2_cap, target):
-    if target > max(jug1_cap, jug2_cap):
-        return False
     if target % gcd(jug1_cap, jug2_cap) != 0:
         return False
     return True
 
-def dfs(state, target, jug1_cap, jug2_cap, visited=None, parent=None):
+def dfs(state, target, jug1_cap, jug2_cap, visited=None, path=None):
     if visited is None:
         visited = []
+    if path is None:
+        path = []
     
     visited.append(state)
-    print(state, end=" ")
+    path.append(state)
     
     jug1, jug2 = state
     if jug1 == target or jug2 == target:
-        print(f"\n\nTarget {target} liters achieved!")
-        return visited
+        print("\nSolution Path:")
+        for i, s in enumerate(path):
+            print(f"Step {i}: {s}")
+        return path
 
     next_states = [
         (jug1_cap, jug2),
@@ -33,25 +35,27 @@ def dfs(state, target, jug1_cap, jug2_cap, visited=None, parent=None):
             continue
         if next_state[0] > jug1_cap or next_state[1] > jug2_cap:
             continue
-        if next_state == parent:
-            continue
         if next_state not in visited:
-            result = dfs(next_state, target, jug1_cap, jug2_cap, visited, state)
+            result = dfs(next_state, target, jug1_cap, jug2_cap, visited, path)
             if result:
                 return result
     
+    path.pop()
     return None
 
 jug1_cap = int(input("Enter capacity of jug1: "))
 jug2_cap = int(input("Enter capacity of jug2: "))
 target = int(input("Enter required amount: "))
 
+if(target < 0 or jug1_cap < 0 or jug2_cap < 0 or target > max(jug1_cap, jug2_cap)):
+    print("\nInvalid input.")
+
+
+
 if is_possible(jug1_cap, jug2_cap, target):
-    print("DFS Traversal: ", end="")
     start = (0, 0)
     result = dfs(start, target, jug1_cap, jug2_cap)
     if not result:
         print("\nNo solution found.")
 else:
-    print("\nInvalid input.")
-
+    print("\nSolution not possible.")

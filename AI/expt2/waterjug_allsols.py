@@ -43,7 +43,6 @@ def dfs(state, target, jug1_cap, jug2_cap, path=None, visited=None, all_solution
             dfs(next_state, target, jug1_cap, jug2_cap, path, visited, all_solutions)
     
     path.pop()
-    visited.remove(state)
     return all_solutions
 
 jug1_cap = int(input("Enter capacity of jug1: "))
