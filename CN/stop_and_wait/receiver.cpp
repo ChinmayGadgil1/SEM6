@@ -37,7 +37,6 @@ int main() {
 
         int seq = buffer[6] - '0';
 
-        // 1. Simulate frame loss
         if (rand() % 100 < 20) {
             cout << "RECEIVER: Frame lost\n\n";
             continue;
