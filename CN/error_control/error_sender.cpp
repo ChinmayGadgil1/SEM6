@@ -1,26 +1,16 @@
-// error_sender.cpp  (Windows)
-// Compile (MSVC):  cl /EHsc /std:c++17 error_sender.cpp ws2_32.lib /Fe:error_sender.exe
-// Compile (MinGW): g++ -o error_sender.exe error_sender.cpp -std=c++17 -lws2_32
-// Usage  :  start error_receiver.exe first, then run error_sender.exe
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
-
 #include <iostream>
 #include <string>
 #include <iomanip>
 #include <stdexcept>
-
 #include "error_common.h"
-
-static const int   PORT      = 9091;      // different port from framing demo
+static const int   PORT      = 9091;
 static const char* SERVER_IP = "127.0.0.1";
-
-// ── Winsock RAII ──────────────────────────────────────────────────────────────
 struct WinsockGuard {
     WinsockGuard() {
         WSADATA wsa;
@@ -30,8 +20,6 @@ struct WinsockGuard {
     }
     ~WinsockGuard() { WSACleanup(); }
 };
-
-// ── Socket helpers ────────────────────────────────────────────────────────────
 SOCKET create_connection() {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET)
@@ -48,35 +36,29 @@ SOCKET create_connection() {
     }
     return sock;
 }
-
-// Length-prefixed send: 4-byte big-endian length + payload
 void send_packet(SOCKET sock, const std::string& payload) {
     uint32_t net_len = htonl(static_cast<uint32_t>(payload.size()));
     send(sock, reinterpret_cast<const char*>(&net_len), 4, 0);
     send(sock, payload.data(), static_cast<int>(payload.size()), 0);
 }
-
-// ── Display helpers ───────────────────────────────────────────────────────────
 void print_bits(const std::string& label, const std::string& data) {
     std::cout << label;
     for (unsigned char c : data)
         std::cout << std::bitset<8>(c) << " ";
     std::cout << "\n";
 }
-
-// ── Menu ──────────────────────────────────────────────────────────────────────
 void print_menu() {
     std::cout << "\n"
               << "=== Error Control Methods (Sender) ===\n"
               << "1. Parity (Even, entire bit string)\n"
               << "2. Block (2D) Parity (bit matrix)\n"
-              << "3. CRC-8\n"
-              << "4. Checksum (16-bit one's complement)\n"
-              << "5. Exit\n"
+              << "3. CRC (data bits + generator polynomial)\n"
+              << "4. Hamming (7,4)\n"
+              << "5. Reed-Solomon (GF(2^8))\n"
+              << "6. Checksum (16-bit one's complement)\n"
+              << "7. Exit\n"
               << "Choice: ";
 }
-
-// ═════════════════════════════════════════════════════════════════════════════
 int main() {
     WinsockGuard wsa;
 
@@ -88,19 +70,16 @@ int main() {
     }
     std::cout << "[INFO] Connected to error_receiver at "
               << SERVER_IP << ":" << PORT << "\n";
-
     std::string choice;
     while (true) {
         print_menu();
         std::getline(std::cin, choice);
 
-        if (choice == "5") {
+        if (choice == "7") {
             send_packet(sock, "QUIT");
             std::cout << "Exiting...\n";
             break;
         }
-
-        // ── 1. Parity ─────────────────────────────────────────────────────
         if (choice == "1") {
             std::string data;
             std::cout << "Enter bit data (e.g. 1010): ";
@@ -122,8 +101,6 @@ int main() {
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
-        // ── 2. Block Parity ───────────────────────────────────────────────
         } else if (choice == "2") {
             std::string data, tmp_rows, tmp_cols;
             std::cout << "Enter number of rows: ";
@@ -174,35 +151,80 @@ int main() {
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
-        // ── 3. CRC-8 ──────────────────────────────────────────────────────
         } else if (choice == "3") {
-            std::string data;
-            std::cout << "Enter bit data (e.g. 11010101): ";
-            std::getline(std::cin, data);
+            std::string data_bits, generator_bits;
+            std::cout << "Enter data bits (e.g. 11010101): ";
+            std::getline(std::cin, data_bits);
+            std::cout << "Enter generator polynomial bits (e.g. 10011): ";
+            std::getline(std::cin, generator_bits);
 
             try {
-                CRC8Result r = crc8_encode(data);
+                CRCPolyResult r = crc_poly_encode(data_bits, generator_bits);
 
                 std::cout << "\n" << std::string(60, '=') << "\n";
-                std::cout << "CRC-8  (polynomial " << to_hex8(CRC8_POLY) << ")\n";
+                std::cout << "CRC (Polynomial Division)\n";
                 std::cout << std::string(60, '=') << "\n";
-                std::cout << "Data bits        : " << r.bits << "\n";
-                std::cout << "Packed bytes(hex): ";
-                for (unsigned char c : r.packed_bytes) std::cout << to_hex8(c) << " ";
-                std::cout << "\n";
-                std::cout << "CRC-8            : " << to_hex8(r.crc)
-                          << "  (" << std::bitset<8>(r.crc) << ")\n";
-                std::cout << "Wire format      : [bit_len(2B)] + [packed data] + [" << to_hex8(r.crc) << "]\n";
+                std::cout << "Data bits            : " << r.data_bits << "\n";
+                std::cout << "Generator polynomial : " << r.generator_bits << "\n";
+                std::cout << "CRC remainder        : " << r.remainder_bits << "\n";
+                std::cout << "Transmitted bits     : " << r.transmitted_bits << "\n";
 
-                send_packet(sock, "CR|" + crc8_pack(r));
-                std::cout << "[INFO] Sent CRC-8-protected data.\n";
+                send_packet(sock, "CR|" + crc_poly_pack(r));
+                std::cout << "[INFO] Sent CRC-protected data.\n";
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
-        // ── 4. Checksum ───────────────────────────────────────────────────
         } else if (choice == "4") {
+            std::string data;
+            std::cout << "Enter bit data (e.g. 110101011001): ";
+            std::getline(std::cin, data);
+
+            try {
+                HammingResult r = hamming_encode(data);
+
+                std::cout << "\n" << std::string(60, '=') << "\n";
+                std::cout << "HAMMING (7,4)\n";
+                std::cout << std::string(60, '=') << "\n";
+                std::cout << "Original data bits : " << r.data_bits << "\n";
+                std::cout << "Encoded bits       : " << r.encoded_bits << "\n";
+                std::cout << "Codeword length    : " << r.encoded_bits.size() << "\n";
+
+                send_packet(sock, "HM|" + hamming_pack(r));
+                std::cout << "[INFO] Sent Hamming-encoded data.\n";
+            } catch (const std::exception& e) {
+                std::cerr << "[ERROR] " << e.what() << "\n";
+            }
+        } else if (choice == "5") {
+            std::string data, tmp_nsym;
+            std::cout << "Enter bit data (e.g. 110101011001): ";
+            std::getline(std::cin, data);
+            std::cout << "Enter parity symbols nsym (1..32, e.g. 8): ";
+            std::getline(std::cin, tmp_nsym);
+
+            int nsym = 0;
+            try { nsym = std::stoi(tmp_nsym); } catch (...) { nsym = 0; }
+
+            try {
+                ReedSolomonResult r = reed_solomon_encode(data, nsym);
+
+                std::cout << "\n" << std::string(60, '=') << "\n";
+                std::cout << "REED-SOLOMON\n";
+                std::cout << std::string(60, '=') << "\n";
+                std::cout << "Data bits         : " << r.bits << "\n";
+                std::cout << "Parity symbols    : " << r.nsym << "\n";
+                std::cout << "Packed bytes(hex) : ";
+                for (unsigned char c : r.packed_bytes) std::cout << to_hex8(c) << " ";
+                std::cout << "\n";
+                std::cout << "Parity bytes(hex) : ";
+                for (unsigned char c : r.parity_bytes) std::cout << to_hex8(c) << " ";
+                std::cout << "\n";
+
+                send_packet(sock, "RS|" + reed_solomon_pack(r));
+                std::cout << "[INFO] Sent Reed-Solomon-protected data.\n";
+            } catch (const std::exception& e) {
+                std::cerr << "[ERROR] " << e.what() << "\n";
+            }
+        } else if (choice == "6") {
             std::string data;
             std::cout << "Enter bit data (e.g. 110101011001): ";
             std::getline(std::cin, data);
@@ -235,9 +257,8 @@ int main() {
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
         } else {
-            std::cout << "Invalid choice. Enter 1-5.\n";
+            std::cout << "Invalid choice. Enter 1-7.\n";
         }
     }
 

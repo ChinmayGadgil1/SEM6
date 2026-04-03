@@ -2,20 +2,14 @@
 #include <string>
 #include <stdexcept>
 #include <cstring>
+#include <vector>
 #include <winsock2.h>
 #include <iphlpapi.h>
-
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
-
 #include "framing_common.h"
-
 static const int PORT = 9090;
-
-// ─── Socket helpers ───────────────────────────────────────────────────────────
-
-// Read exactly `n` bytes from socket
 bool recv_exact(SOCKET sock, char* buf, size_t n) {
     size_t received = 0;
     while (received < n) {
@@ -25,8 +19,6 @@ bool recv_exact(SOCKET sock, char* buf, size_t n) {
     }
     return true;
 }
-
-// Receive a length-prefixed frame (4-byte big-endian length + payload)
 bool recv_frame(SOCKET sock, std::string& out) {
     uint32_t net_len;
     if (!recv_exact(sock, (char*)&net_len, 4)) return false;
@@ -35,9 +27,6 @@ bool recv_frame(SOCKET sock, std::string& out) {
     out.resize(len);
     return recv_exact(sock, &out[0], len);
 }
-
-// ─── Frame display helpers ────────────────────────────────────────────────────
-
 void display_cc_frame(const std::string& raw_frame, int idx) {
     int count = (unsigned char)raw_frame[0];
     std::cout << "  Frame " << idx << ": [" << count << "]";
@@ -45,9 +34,6 @@ void display_cc_frame(const std::string& raw_frame, int idx) {
         std::cout << "[" << raw_frame[j] << "]";
     std::cout << "\n";
 }
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 int main() {
     WSADATA wsa_data;
     if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
@@ -96,29 +82,23 @@ int main() {
     }
     std::cout << "[Receiver] Sender connected from "
               << inet_ntoa(client_addr.sin_addr) << "\n";
-
     std::string msg;
     while (recv_frame(client_fd, msg)) {
         if (msg == "QUIT") {
             std::cout << "\n[Receiver] Sender disconnected. Bye!\n";
             break;
         }
-
         if (msg.size() < 3 || msg[2] != '|') {
             std::cerr << "[Receiver] Unknown message format.\n";
             continue;
         }
-
         std::string type    = msg.substr(0, 2);
         std::string payload = msg.substr(3);
-
         std::cout << "\n" << std::string(60, '=') << "\n";
-
         try {
             if (type == "CC") {
                 std::cout << "Received: CHARACTER COUNT FRAME(S)\n";
                 std::cout << std::string(60, '=') << "\n";
-
                 int i = 0, idx = 1;
                 std::string full_data;
                 while (i < (int)payload.size()) {
@@ -132,39 +112,31 @@ int main() {
                     full_data += frame.substr(1);
                     i += count;
                 }
-
                 std::string decoded = character_count_decode(payload);
                 std::cout << "\nDecoded data : " << decoded << "\n";
                 std::cout << "Rule: read count C → next C-1 chars are payload.\n";
-
             } else if (type == "BS") {
                 std::cout << "Received: BYTE STUFFED FRAME\n";
                 std::cout << std::string(60, '=') << "\n";
                 std::cout << "Raw frame    : " << payload << "\n";
-
                 std::string decoded = byte_unstuff(payload);
                 std::cout << "Decoded data : " << decoded  << "\n";
                 std::cout << "Unstuffing   : ESC ESC → ESC  |  ESC FLAG → FLAG\n";
-
             } else if (type == "BT") {
                 std::cout << "Received: BIT STUFFED FRAME\n";
                 std::cout << std::string(60, '=') << "\n";
                 std::cout << "Raw frame    : " << payload << "\n";
-
                 std::string decoded = bit_unstuff(payload);
                 std::cout << "Decoded bits : " << decoded  << "\n";
                 std::cout << "Unstuffing   : after 5 consecutive 1s, remove the stuffed 0.\n";
-
             } else {
                 std::cerr << "[Receiver] Unknown type '" << type << "'\n";
             }
         } catch (const std::exception& e) {
             std::cerr << "[Receiver] Decode error: " << e.what() << "\n";
         }
-
         std::cout << std::string(60, '=') << "\n";
     }
-
     closesocket(client_fd);
     closesocket(server_fd);
     WSACleanup();

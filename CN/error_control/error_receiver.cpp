@@ -1,26 +1,16 @@
-// error_receiver.cpp  (Windows)
-// Compile (MSVC):  cl /EHsc /std:c++17 error_receiver.cpp ws2_32.lib /Fe:error_receiver.exe
-// Compile (MinGW): g++ -o error_receiver.exe error_receiver.cpp -std=c++17 -lws2_32
-// Usage  :  run this BEFORE error_sender.exe
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
-
 #include <iostream>
 #include <string>
 #include <cstring>
 #include <iomanip>
 #include <stdexcept>
-
 #include "error_common.h"
-
 static const int PORT = 9091;
-
-// ── Winsock RAII ──────────────────────────────────────────────────────────────
 struct WinsockGuard {
     WinsockGuard() {
         WSADATA wsa;
@@ -30,8 +20,6 @@ struct WinsockGuard {
     }
     ~WinsockGuard() { WSACleanup(); }
 };
-
-// ── Socket helpers ────────────────────────────────────────────────────────────
 bool recv_exact(SOCKET sock, char* buf, int n) {
     int got = 0;
     while (got < n) {
@@ -41,7 +29,6 @@ bool recv_exact(SOCKET sock, char* buf, int n) {
     }
     return true;
 }
-
 bool recv_packet(SOCKET sock, std::string& out) {
     uint32_t net_len;
     if (!recv_exact(sock, reinterpret_cast<char*>(&net_len), 4)) return false;
@@ -50,16 +37,12 @@ bool recv_packet(SOCKET sock, std::string& out) {
     out.resize(len);
     return recv_exact(sock, &out[0], static_cast<int>(len));
 }
-
-// ── Status banner ─────────────────────────────────────────────────────────────
 void print_status(bool ok) {
     if (ok)
         std::cout << "\n  STATUS: [OK]  No errors detected.\n";
     else
         std::cout << "\n  STATUS: [ERROR]  Corruption detected!\n";
 }
-
-// ═════════════════════════════════════════════════════════════════════════════
 int main() {
     WinsockGuard wsa;
 
@@ -101,7 +84,6 @@ int main() {
     char ip_buf[INET_ADDRSTRLEN] = {};
     strcpy(ip_buf, inet_ntoa(client_addr.sin_addr));
     std::cout << "[Receiver] Sender connected from " << ip_buf << "\n";
-
     std::string msg;
     while (recv_packet(client_fd, msg)) {
         if (msg == "QUIT") {
@@ -113,14 +95,10 @@ int main() {
             std::cerr << "[Receiver] Unknown message format.\n";
             continue;
         }
-
         std::string tag     = msg.substr(0, 2);
         std::string payload = msg.substr(3);
-
         std::cout << "\n" << std::string(60, '=') << "\n";
-
         try {
-            // ── Parity ────────────────────────────────────────────────────
             if (tag == "PR") {
                 std::cout << "Received: PARITY-PROTECTED DATA\n";
                 std::cout << std::string(60, '=') << "\n";
@@ -133,8 +111,6 @@ int main() {
                 std::cout << "Parity recomputed : " << static_cast<int>(r.parity_bit) << "\n";
                 std::cout << "Parity received   : " << static_cast<int>(recv_parity) << "\n";
                 print_status(r.ok);
-
-            // ── Block Parity ──────────────────────────────────────────────
             } else if (tag == "BP") {
                 std::cout << "Received: BLOCK (2D) PARITY DATA\n";
                 std::cout << std::string(60, '=') << "\n";
@@ -156,26 +132,42 @@ int main() {
                     std::cout << "  " << static_cast<int>(r.col_parity[col]);
                 std::cout << "\n";
                 print_status(r.ok);
-
-            // ── CRC-8 ─────────────────────────────────────────────────────
             } else if (tag == "CR") {
-                std::cout << "Received: CRC-8 PROTECTED DATA\n";
+                std::cout << "Received: CRC PROTECTED DATA\n";
                 std::cout << std::string(60, '=') << "\n";
 
-                CRC8Result r = crc8_decode(payload);
+                CRCPolyResult r = crc_poly_decode(payload);
 
-                std::cout << "Data bits        : " << r.bits << "\n";
-                std::cout << "Packed bytes(hex): ";
+                std::cout << "Data bits            : " << r.data_bits << "\n";
+                std::cout << "Generator polynomial : " << r.generator_bits << "\n";
+                std::cout << "CRC remainder        : " << r.remainder_bits << "\n";
+                std::cout << "Transmitted bits     : " << r.transmitted_bits << "\n";
+                print_status(r.ok);
+            } else if (tag == "HM") {
+                std::cout << "Received: HAMMING PROTECTED DATA\n";
+                std::cout << std::string(60, '=') << "\n";
+
+                HammingResult r = hamming_decode(payload);
+
+                std::cout << "Encoded bits         : " << r.encoded_bits << "\n";
+                std::cout << "Decoded data bits    : " << r.decoded_bits << "\n";
+                std::cout << "Corrected blocks     : " << r.corrected_blocks << "\n";
+                print_status(r.ok);
+            } else if (tag == "RS") {
+                std::cout << "Received: REED-SOLOMON PROTECTED DATA\n";
+                std::cout << std::string(60, '=') << "\n";
+
+                ReedSolomonResult r = reed_solomon_decode(payload);
+
+                std::cout << "Data bits         : " << r.bits << "\n";
+                std::cout << "Parity symbols    : " << r.nsym << "\n";
+                std::cout << "Packed bytes(hex) : ";
                 for (unsigned char c : r.packed_bytes) std::cout << to_hex8(c) << " ";
                 std::cout << "\n";
-                std::cout << "CRC-8 recomputed : " << to_hex8(r.crc)
-                          << "  (" << std::bitset<8>(r.crc) << ")\n";
-                uint8_t recv_crc = static_cast<uint8_t>(payload.back());
-                std::cout << "CRC-8 received   : " << to_hex8(recv_crc)
-                          << "  (" << std::bitset<8>(recv_crc) << ")\n";
+                std::cout << "Parity bytes(hex) : ";
+                for (unsigned char c : r.parity_bytes) std::cout << to_hex8(c) << " ";
+                std::cout << "\n";
                 print_status(r.ok);
-
-            // ── Checksum ──────────────────────────────────────────────────
             } else if (tag == "CS") {
                 std::cout << "Received: CHECKSUM-PROTECTED DATA\n";
                 std::cout << std::string(60, '=') << "\n";
@@ -202,15 +194,12 @@ int main() {
                                  |  static_cast<uint8_t>(payload[2 + packed_len + 1]);
                 std::cout << "Checksum received: " << to_hex16(recv_cs) << "\n";
                 print_status(r.ok);
-
             } else {
                 std::cerr << "[Receiver] Unknown tag '" << tag << "'\n";
             }
-
         } catch (const std::exception& e) {
             std::cerr << "[Receiver] Decode error: " << e.what() << "\n";
         }
-
         std::cout << std::string(60, '=') << "\n";
     }
 

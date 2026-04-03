@@ -2,21 +2,9 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
-#include <sstream>
-
-// ─────────────────────────────────────────────
-//  Constants
-// ─────────────────────────────────────────────
 static const std::string BYTE_FLAG = "FLAG";
 static const std::string BYTE_ESC  = "ESC";
 static const std::string BIT_FLAG  = "01111110";
-
-// ─────────────────────────────────────────────
-//  1. Character Count Framing
-// ─────────────────────────────────────────────
-
-// Encode: splits data into frames of (total_frame_size - 1) payload bytes.
-// Each frame is: [count][payload...]  where count = payload_len + 1
 std::vector<std::string> character_count_encode(const std::string& data,
                                                 int total_frame_size = 5) {
     if (total_frame_size <= 1)
@@ -24,16 +12,13 @@ std::vector<std::string> character_count_encode(const std::string& data,
 
     int payload_size = total_frame_size - 1;
     std::vector<std::string> frames;
-
     for (int i = 0; i < (int)data.size(); i += payload_size) {
         std::string payload = data.substr(i, payload_size);
-        char count = (char)(payload.size() + 1); // count includes itself
+        char count = (char)(payload.size() + 1);
         frames.push_back(std::string(1, count) + payload);
     }
     return frames;
 }
-
-// Decode: read count byte, then count-1 payload bytes, repeat.
 std::string character_count_decode(const std::string& raw) {
     std::string result;
     int i = 0;
@@ -49,28 +34,15 @@ std::string character_count_decode(const std::string& raw) {
     }
     return result;
 }
-
-// ─────────────────────────────────────────────
-//  2. Byte Stuffing
-//  Protocol:  FLAG <stuffed-data> FLAG
-//  Stuffing:  ESC → ESC ESC
-//             FLAG (inside data) → ESC FLAG
-// ─────────────────────────────────────────────
-
 std::string byte_stuff(const std::string& data) {
-    // Order matters: escape ESC first, then FLAG
     std::string stuffed;
     stuffed.reserve(data.size() * 2);
-
-    // We need to scan character by character to avoid double-replacing
     size_t i = 0;
     while (i < data.size()) {
-        // Check for ESC first
         if (data.compare(i, BYTE_ESC.size(), BYTE_ESC) == 0) {
             stuffed += BYTE_ESC + BYTE_ESC;
             i += BYTE_ESC.size();
         }
-        // Then FLAG
         else if (data.compare(i, BYTE_FLAG.size(), BYTE_FLAG) == 0) {
             stuffed += BYTE_ESC + BYTE_FLAG;
             i += BYTE_FLAG.size();
@@ -82,15 +54,11 @@ std::string byte_stuff(const std::string& data) {
     }
     return BYTE_FLAG + stuffed + BYTE_FLAG;
 }
-
 std::string byte_unstuff(const std::string& framed) {
-    // Verify and strip outer FLAGs
     if (framed.compare(0, BYTE_FLAG.size(), BYTE_FLAG) != 0 ||
         framed.compare(framed.size() - BYTE_FLAG.size(), BYTE_FLAG.size(), BYTE_FLAG) != 0) {
         throw std::runtime_error("Byte unstuff: missing FLAG delimiters");
     }
-
-    // Inner content between the two FLAGs
     std::string inner = framed.substr(BYTE_FLAG.size(),
                                       framed.size() - 2 * BYTE_FLAG.size());
     std::string result;
@@ -100,7 +68,6 @@ std::string byte_unstuff(const std::string& framed) {
             i += BYTE_ESC.size();
             if (i >= inner.size())
                 throw std::runtime_error("Byte unstuff: ESC at end of data");
-            // Next token is either ESC or FLAG
             if (inner.compare(i, BYTE_ESC.size(), BYTE_ESC) == 0) {
                 result += BYTE_ESC;
                 i += BYTE_ESC.size();
@@ -117,13 +84,6 @@ std::string byte_unstuff(const std::string& framed) {
     }
     return result;
 }
-
-// ─────────────────────────────────────────────
-//  3. Bit Stuffing
-//  Protocol:  01111110 <stuffed-bits> 01111110
-//  Stuffing:  After 5 consecutive 1s, insert a 0
-// ─────────────────────────────────────────────
-
 std::string bit_stuff(const std::string& bits) {
     for (char c : bits)
         if (c != '0' && c != '1')
@@ -142,7 +102,6 @@ std::string bit_stuff(const std::string& bits) {
     }
     return BIT_FLAG + stuffed + BIT_FLAG;
 }
-
 std::string bit_unstuff(const std::string& framed) {
     if (framed.compare(0, BIT_FLAG.size(), BIT_FLAG) != 0 ||
         framed.compare(framed.size() - BIT_FLAG.size(), BIT_FLAG.size(), BIT_FLAG) != 0) {
@@ -160,7 +119,7 @@ std::string bit_unstuff(const std::string& framed) {
             result += b;
             ones++;
             if (ones == 5) {
-                i++; // skip the stuffed 0
+                i++;
                 if (i < inner.size() && inner[i] != '0')
                     throw std::runtime_error("Bit unstuff: expected stuffed 0");
                 ones = 0;

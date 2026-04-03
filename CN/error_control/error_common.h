@@ -6,8 +6,7 @@
 #include <stdexcept>
 #include <bitset>
 #include <cstdint>
-
-// ─── Hex formatting helpers ───────────────────────────────────────────────────
+#include <array>
 inline std::string to_hex8(uint8_t v) {
     std::ostringstream ss;
     ss << "0x" << std::uppercase << std::hex
@@ -52,16 +51,20 @@ inline std::string unpack_bytes_to_bits(const std::string& bytes, size_t bit_len
     }
     return bits;
 }
-
-// =========================================================================
-//  1. PARITY  (even parity over entire bit string)
-//
-//  Rule: parity bit = (number_of_1_bits % 2)
-//        so that total ones including parity bit is even.
-//
-//  Wire layout : [1 byte: bit_len] [bit chars '0'/'1'] [1 byte parity bit (0/1)]
-//  Socket tag  : "PR|"
-// =========================================================================
+inline std::vector<std::string> split_fields(const std::string& s, char delim) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : s) {
+        if (c == delim) {
+            out.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    out.push_back(cur);
+    return out;
+}
 struct ParityResult {
     std::string bits;
     uint8_t     parity_bit;
@@ -107,18 +110,6 @@ inline ParityResult parity_decode(const std::string& wire) {
     r.ok = (r.parity_bit == recv_parity);
     return r;
 }
-
-// =========================================================================
-//  2. BLOCK (2D) PARITY
-//
-//  Data bits are laid out row-major in a rows x cols matrix.
-//  Row parity bit = XOR of bits in each row.
-//  Col parity bit = XOR of bits in each column.
-//
-//  Wire layout : [1 byte: rows] [1 byte: cols] [rows*cols bit chars '0'/'1']
-//                [row parity bits as bytes (rows)] [col parity bits as bytes (cols)]
-//  Socket tag  : "BP|"
-// =========================================================================
 struct BlockParityResult {
     std::string                       bits;
     int                               rows, cols;
@@ -203,97 +194,370 @@ inline BlockParityResult block_parity_decode(const std::string& wire) {
     r.ok = (r.row_parity == recv_row) && (r.col_parity == recv_col);
     return r;
 }
-
-// =========================================================================
-//  3. CRC-8  (polynomial 0x07, CRC-8/SMBUS)
-//
-//  CRC starts at 0x00. For each byte: XOR into CRC, then process 8 bits:
-//    if high bit set  -> shift left, XOR with 0x07
-//    else             -> shift left
-//  Append the 1-byte result after the data.
-//
-//  Input bits are packed MSB-first into bytes; last byte is right-padded with 0s.
-//
-//  Wire layout : [2 bytes: bit_len] [packed data bytes] [1 CRC byte]
-//  Socket tag  : "CR|"
-// =========================================================================
-static const uint8_t CRC8_POLY = 0x07;
-
-inline uint8_t crc8_compute(const std::string& data) {
-    uint8_t crc = 0x00;
-    for (unsigned char byte : data) {
-        crc ^= byte;
-        for (int i = 0; i < 8; i++) {
-            if (crc & 0x80)
-                crc = static_cast<uint8_t>((crc << 1) ^ CRC8_POLY);
-            else
-                crc = static_cast<uint8_t>(crc << 1);
-        }
-    }
-    return crc;
+inline bool is_binary_bits(const std::string& s) {
+    if (s.empty()) return false;
+    for (char c : s)
+        if (c != '0' && c != '1')
+            return false;
+    return true;
 }
 
-struct CRC8Result {
-    std::string bits;
-    std::string packed_bytes;
-    uint8_t     crc;
+inline std::string crc_poly_remainder(const std::string& data_bits,
+                                      const std::string& generator_bits) {
+    if (!is_binary_bits(data_bits) || !is_binary_bits(generator_bits))
+        throw std::invalid_argument("CRC: data and generator must be binary strings");
+    if (generator_bits.size() < 2 || generator_bits.front() != '1' ||
+        generator_bits.back() != '1') {
+        throw std::invalid_argument("CRC: generator must start/end with 1 and length >= 2");
+    }
+
+    std::string work = data_bits + std::string(generator_bits.size() - 1, '0');
+    for (size_t i = 0; i + generator_bits.size() <= work.size(); ++i) {
+        if (work[i] == '1') {
+            for (size_t j = 0; j < generator_bits.size(); ++j)
+                work[i + j] = (work[i + j] == generator_bits[j]) ? '0' : '1';
+        }
+    }
+    return work.substr(work.size() - (generator_bits.size() - 1));
+}
+
+inline bool crc_poly_verify(const std::string& transmitted_bits,
+                            const std::string& generator_bits) {
+    if (!is_binary_bits(transmitted_bits) || !is_binary_bits(generator_bits))
+        throw std::invalid_argument("CRC verify: transmitted bits and generator must be binary strings");
+    if (generator_bits.size() < 2 || generator_bits.front() != '1' ||
+        generator_bits.back() != '1') {
+        throw std::invalid_argument("CRC verify: generator must start/end with 1 and length >= 2");
+    }
+    if (transmitted_bits.size() < generator_bits.size() - 1)
+        throw std::invalid_argument("CRC verify: transmitted bits too short");
+
+    std::string work = transmitted_bits;
+    for (size_t i = 0; i + generator_bits.size() <= work.size(); ++i) {
+        if (work[i] == '1') {
+            for (size_t j = 0; j < generator_bits.size(); ++j)
+                work[i + j] = (work[i + j] == generator_bits[j]) ? '0' : '1';
+        }
+    }
+
+    size_t rem_start = work.size() - (generator_bits.size() - 1);
+    for (size_t i = rem_start; i < work.size(); ++i) {
+        if (work[i] != '0') return false;
+    }
+    return true;
+}
+
+struct CRCPolyResult {
+    std::string data_bits;
+    std::string generator_bits;
+    std::string remainder_bits;
+    std::string transmitted_bits;
     bool        ok;
 };
 
-inline CRC8Result crc8_encode(const std::string& bits) {
-    validate_bit_string(bits, "CRC-8");
-    if (bits.size() > 65535)
-        throw std::invalid_argument("CRC-8: max bit length is 65535 for this packet format");
-
-    CRC8Result r;
-    r.bits = bits;
-    r.packed_bytes = pack_bits_to_bytes(bits);
-    r.crc  = crc8_compute(r.packed_bytes);
-    r.ok   = true;
+inline CRCPolyResult crc_poly_encode(const std::string& data_bits,
+                                     const std::string& generator_bits) {
+    CRCPolyResult r;
+    r.data_bits = data_bits;
+    r.generator_bits = generator_bits;
+    r.remainder_bits = crc_poly_remainder(data_bits, generator_bits);
+    r.transmitted_bits = data_bits + r.remainder_bits;
+    r.ok = true;
     return r;
 }
 
-inline std::string crc8_pack(const CRC8Result& r) {
+inline std::string crc_poly_pack(const CRCPolyResult& r) {
+    return r.data_bits + "|" + r.generator_bits + "|" +
+           r.remainder_bits + "|" + r.transmitted_bits;
+}
+
+inline CRCPolyResult crc_poly_decode(const std::string& wire) {
+    auto parts = split_fields(wire, '|');
+    if (parts.size() != 4)
+        throw std::runtime_error("CRC: invalid packet format");
+
+    CRCPolyResult r;
+    r.data_bits = parts[0];
+    r.generator_bits = parts[1];
+    r.remainder_bits = parts[2];
+    r.transmitted_bits = parts[3];
+
+    std::string expected_rem = crc_poly_remainder(r.data_bits, r.generator_bits);
+    std::string expected_tx = r.data_bits + expected_rem;
+    r.ok = (r.remainder_bits == expected_rem) &&
+           (r.transmitted_bits == expected_tx) &&
+           crc_poly_verify(r.transmitted_bits, r.generator_bits);
+    return r;
+}
+struct HammingResult {
+    std::string data_bits;
+    std::string encoded_bits;
+    std::string decoded_bits;
+    size_t      original_len;
+    int         corrected_blocks;
+    bool        ok;
+};
+
+inline HammingResult hamming_encode(const std::string& bits) {
+    validate_bit_string(bits, "Hamming");
+
+    HammingResult r;
+    r.data_bits = bits;
+    r.original_len = bits.size();
+    r.corrected_blocks = 0;
+    r.ok = true;
+
+    std::string padded = bits;
+    while (padded.size() % 4 != 0) padded.push_back('0');
+
+    std::string enc;
+    enc.reserve((padded.size() / 4) * 7);
+
+    for (size_t i = 0; i < padded.size(); i += 4) {
+        uint8_t d1 = static_cast<uint8_t>(padded[i] - '0');
+        uint8_t d2 = static_cast<uint8_t>(padded[i + 1] - '0');
+        uint8_t d3 = static_cast<uint8_t>(padded[i + 2] - '0');
+        uint8_t d4 = static_cast<uint8_t>(padded[i + 3] - '0');
+
+        uint8_t p1 = d1 ^ d2 ^ d4;
+        uint8_t p2 = d1 ^ d3 ^ d4;
+        uint8_t p4 = d2 ^ d3 ^ d4;
+
+        enc.push_back(static_cast<char>('0' + p1));
+        enc.push_back(static_cast<char>('0' + p2));
+        enc.push_back(static_cast<char>('0' + d1));
+        enc.push_back(static_cast<char>('0' + p4));
+        enc.push_back(static_cast<char>('0' + d2));
+        enc.push_back(static_cast<char>('0' + d3));
+        enc.push_back(static_cast<char>('0' + d4));
+    }
+
+    r.encoded_bits = enc;
+    r.decoded_bits = bits;
+    return r;
+}
+
+inline std::string hamming_pack(const HammingResult& r) {
+    return std::to_string(r.original_len) + "|" + r.encoded_bits;
+}
+
+inline HammingResult hamming_decode(const std::string& wire) {
+    auto parts = split_fields(wire, '|');
+    if (parts.size() != 2)
+        throw std::runtime_error("Hamming: invalid packet format");
+
+    size_t original_len = 0;
+    try {
+        original_len = static_cast<size_t>(std::stoul(parts[0]));
+    } catch (...) {
+        throw std::runtime_error("Hamming: invalid original length in packet");
+    }
+
+    std::string enc = parts[1];
+    validate_bit_string(enc, "Hamming");
+    if (enc.size() % 7 != 0)
+        throw std::runtime_error("Hamming: encoded length must be a multiple of 7");
+
+    int corrected = 0;
+    std::string dec;
+    dec.reserve((enc.size() / 7) * 4);
+
+    for (size_t i = 0; i < enc.size(); i += 7) {
+        uint8_t b1 = static_cast<uint8_t>(enc[i] - '0');
+        uint8_t b2 = static_cast<uint8_t>(enc[i + 1] - '0');
+        uint8_t b3 = static_cast<uint8_t>(enc[i + 2] - '0');
+        uint8_t b4 = static_cast<uint8_t>(enc[i + 3] - '0');
+        uint8_t b5 = static_cast<uint8_t>(enc[i + 4] - '0');
+        uint8_t b6 = static_cast<uint8_t>(enc[i + 5] - '0');
+        uint8_t b7 = static_cast<uint8_t>(enc[i + 6] - '0');
+
+        uint8_t s1 = b1 ^ b3 ^ b5 ^ b7;
+        uint8_t s2 = b2 ^ b3 ^ b6 ^ b7;
+        uint8_t s4 = b4 ^ b5 ^ b6 ^ b7;
+        uint8_t err_pos = static_cast<uint8_t>(s1 + (s2 << 1) + (s4 << 2));
+
+        if (err_pos >= 1 && err_pos <= 7) {
+            ++corrected;
+            switch (err_pos) {
+                case 1: b1 ^= 1; break;
+                case 2: b2 ^= 1; break;
+                case 3: b3 ^= 1; break;
+                case 4: b4 ^= 1; break;
+                case 5: b5 ^= 1; break;
+                case 6: b6 ^= 1; break;
+                case 7: b7 ^= 1; break;
+            }
+        }
+
+        dec.push_back(static_cast<char>('0' + b3));
+        dec.push_back(static_cast<char>('0' + b5));
+        dec.push_back(static_cast<char>('0' + b6));
+        dec.push_back(static_cast<char>('0' + b7));
+    }
+
+    if (original_len > dec.size())
+        throw std::runtime_error("Hamming: original length exceeds decoded length");
+
+    HammingResult r;
+    r.original_len = original_len;
+    r.encoded_bits = enc;
+    r.decoded_bits = dec.substr(0, original_len);
+    r.data_bits = r.decoded_bits;
+    r.corrected_blocks = corrected;
+    r.ok = true;
+    return r;
+}
+inline const std::array<uint8_t, 512>& rs_exp_table() {
+    static const std::array<uint8_t, 512> exp_table = []() {
+        std::array<uint8_t, 512> t{};
+        uint16_t x = 1;
+        for (int i = 0; i < 255; ++i) {
+            t[i] = static_cast<uint8_t>(x);
+            x <<= 1;
+            if (x & 0x100) x ^= 0x11d;
+        }
+        for (int i = 255; i < 512; ++i) t[i] = t[i - 255];
+        return t;
+    }();
+    return exp_table;
+}
+
+inline const std::array<uint8_t, 256>& rs_log_table() {
+    static const std::array<uint8_t, 256> log_table = []() {
+        std::array<uint8_t, 256> t{};
+        auto exp = rs_exp_table();
+        for (int i = 0; i < 255; ++i) t[exp[i]] = static_cast<uint8_t>(i);
+        t[0] = 0;
+        return t;
+    }();
+    return log_table;
+}
+
+inline uint8_t rs_gf_mul(uint8_t a, uint8_t b) {
+    if (a == 0 || b == 0) return 0;
+    const auto& exp = rs_exp_table();
+    const auto& log = rs_log_table();
+    return exp[static_cast<int>(log[a]) + static_cast<int>(log[b])];
+}
+
+inline std::vector<uint8_t> rs_poly_mul(const std::vector<uint8_t>& a,
+                                        const std::vector<uint8_t>& b) {
+    std::vector<uint8_t> out(a.size() + b.size() - 1, 0);
+    for (size_t i = 0; i < a.size(); ++i) {
+        for (size_t j = 0; j < b.size(); ++j)
+            out[i + j] ^= rs_gf_mul(a[i], b[j]);
+    }
+    return out;
+}
+
+inline std::vector<uint8_t> rs_generator_poly(int nsym) {
+    if (nsym <= 0 || nsym > 32)
+        throw std::invalid_argument("Reed-Solomon: parity symbols (nsym) must be in 1..32");
+    std::vector<uint8_t> g{1};
+    const auto& exp = rs_exp_table();
+    for (int i = 0; i < nsym; ++i) {
+        std::vector<uint8_t> term{1, exp[i]};
+        g = rs_poly_mul(g, term);
+    }
+    return g;
+}
+
+inline std::string rs_compute_parity(const std::string& data_bytes, int nsym) {
+    if (data_bytes.empty())
+        throw std::invalid_argument("Reed-Solomon: data must not be empty");
+
+    auto gen = rs_generator_poly(nsym);
+    std::vector<uint8_t> msg(data_bytes.begin(), data_bytes.end());
+    msg.resize(data_bytes.size() + static_cast<size_t>(nsym), 0);
+
+    for (size_t i = 0; i < data_bytes.size(); ++i) {
+        uint8_t coef = msg[i];
+        if (coef != 0) {
+            for (size_t j = 1; j < gen.size(); ++j)
+                msg[i + j] ^= rs_gf_mul(gen[j], coef);
+        }
+    }
+
+    return std::string(msg.end() - nsym, msg.end());
+}
+
+inline bool rs_verify_codeword(const std::string& codeword, int nsym) {
+    if (codeword.empty()) return false;
+    const auto& exp = rs_exp_table();
+
+    for (int i = 0; i < nsym; ++i) {
+        uint8_t s = 0;
+        uint8_t x = exp[i];
+        for (unsigned char b : codeword)
+            s = static_cast<uint8_t>(rs_gf_mul(s, x) ^ b);
+        if (s != 0) return false;
+    }
+    return true;
+}
+
+struct ReedSolomonResult {
+    std::string bits;
+    std::string packed_bytes;
+    std::string parity_bytes;
+    int         nsym;
+    bool        ok;
+};
+
+inline ReedSolomonResult reed_solomon_encode(const std::string& bits, int nsym) {
+    validate_bit_string(bits, "Reed-Solomon");
+    if (bits.size() > 65535)
+        throw std::invalid_argument("Reed-Solomon: max bit length is 65535 for this packet format");
+
+    ReedSolomonResult r;
+    r.bits = bits;
+    r.nsym = nsym;
+    r.packed_bytes = pack_bits_to_bytes(bits);
+    r.parity_bytes = rs_compute_parity(r.packed_bytes, nsym);
+    r.ok = true;
+    return r;
+}
+
+inline std::string reed_solomon_pack(const ReedSolomonResult& r) {
+    if (r.nsym <= 0 || r.nsym > 255)
+        throw std::invalid_argument("Reed-Solomon: nsym must be in 1..255 for packet format");
     std::string out;
     uint16_t bit_len = static_cast<uint16_t>(r.bits.size());
     out += static_cast<char>((bit_len >> 8) & 0xFF);
     out += static_cast<char>(bit_len & 0xFF);
+    out += static_cast<char>(r.nsym & 0xFF);
     out += r.packed_bytes;
-    out += static_cast<char>(r.crc);
+    out += r.parity_bytes;
     return out;
 }
 
-inline CRC8Result crc8_decode(const std::string& wire) {
-    if (wire.size() < 4) throw std::runtime_error("CRC-8: packet too short");
+inline ReedSolomonResult reed_solomon_decode(const std::string& wire) {
+    if (wire.size() < 4)
+        throw std::runtime_error("Reed-Solomon: packet too short");
+
     uint16_t bit_len = (static_cast<uint8_t>(wire[0]) << 8)
                      |  static_cast<uint8_t>(wire[1]);
     if (bit_len == 0)
-        throw std::runtime_error("CRC-8: invalid bit length in packet");
+        throw std::runtime_error("Reed-Solomon: invalid bit length in packet");
+
+    int nsym = static_cast<uint8_t>(wire[2]);
+    if (nsym <= 0)
+        throw std::runtime_error("Reed-Solomon: invalid nsym in packet");
 
     size_t data_len = (bit_len + 7) / 8;
-    if (wire.size() < 2 + data_len + 1)
-        throw std::runtime_error("CRC-8: truncated packet");
+    if (wire.size() < 3 + data_len + static_cast<size_t>(nsym))
+        throw std::runtime_error("Reed-Solomon: truncated packet");
 
-    std::string packed = wire.substr(2, data_len);
-    uint8_t recv_crc = static_cast<uint8_t>(wire.back());
-    CRC8Result r = crc8_encode(unpack_bytes_to_bits(packed, bit_len));
-    r.ok = (r.crc == recv_crc);
+    std::string packed = wire.substr(3, data_len);
+    std::string parity = wire.substr(3 + data_len, static_cast<size_t>(nsym));
+
+    ReedSolomonResult r;
+    r.bits = unpack_bytes_to_bits(packed, bit_len);
+    r.packed_bytes = packed;
+    r.parity_bytes = parity;
+    r.nsym = nsym;
+    r.ok = rs_verify_codeword(packed + parity, nsym);
     return r;
 }
-
-// =========================================================================
-//  4. CHECKSUM  (16-bit one's complement, same as Internet checksum)
-//
-//  Data is treated as 16-bit big-endian words; odd-length data is zero-padded.
-//  Sum all words with one's complement addition (carry wraps around).
-//  Checksum = bitwise NOT of the sum.
-//  Verification: sum of all words INCLUDING the checksum word == 0xFFFF.
-//
-//  Input bits are packed MSB-first into bytes; last byte is right-padded with 0s.
-//
-//  Wire layout : [2 bytes: bit_len] [packed data bytes] [2 checksum bytes, big-endian]
-//  Socket tag  : "CS|"
-// =========================================================================
 inline uint16_t checksum_compute(const std::string& data) {
     uint32_t sum = 0;
     int len = static_cast<int>(data.size());

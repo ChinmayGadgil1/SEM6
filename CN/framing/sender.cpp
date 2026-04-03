@@ -1,28 +1,17 @@
-// sender.cpp  (Windows)
-// Compile (MSVC Developer Command Prompt):
-//   cl /EHsc /std:c++17 sender.cpp ws2_32.lib /Fe:sender.exe
-// Compile (MinGW / MSYS2):
-//   g++ -o sender.exe sender.cpp -std=c++17 -lws2_32
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
-
 #include <iostream>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
-
 #include "framing_common.h"
-
 static const int   PORT      = 9090;
 static const char* SERVER_IP = "127.0.0.1";
-
-// ── Winsock init/cleanup ──────────────────────────────────────────────────────
 struct WinsockGuard {
     WinsockGuard() {
         WSADATA wsa;
@@ -32,19 +21,15 @@ struct WinsockGuard {
     }
     ~WinsockGuard() { WSACleanup(); }
 };
-
-// ── Connection ────────────────────────────────────────────────────────────────
 SOCKET create_connection() {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET)
         throw std::runtime_error("socket() failed, code: " +
                                  std::to_string(WSAGetLastError()));
-
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port   = htons(PORT);
     addr.sin_addr.s_addr = inet_addr(SERVER_IP);
-
     if (connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
         closesocket(sock);
         throw std::runtime_error("connect() failed - is receiver.exe running?  code: " +
@@ -52,15 +37,11 @@ SOCKET create_connection() {
     }
     return sock;
 }
-
-// ── Send helper ───────────────────────────────────────────────────────────────
 void send_frame(SOCKET sock, const std::string& data) {
     uint32_t net_len = htonl(static_cast<uint32_t>(data.size()));
     send(sock, reinterpret_cast<const char*>(&net_len), 4, 0);
     send(sock, data.data(), static_cast<int>(data.size()), 0);
 }
-
-// ── Menu ──────────────────────────────────────────────────────────────────────
 void print_menu() {
     std::cout << "\n=== Framing Methods (Sender) ===\n"
               << "1. Character Count\n"
@@ -69,10 +50,8 @@ void print_menu() {
               << "4. Exit\n"
               << "Choice: ";
 }
-
 int main() {
-    WinsockGuard wsa;   // WSAStartup here; WSACleanup automatically on exit
-
+    WinsockGuard wsa;
     SOCKET sock = INVALID_SOCKET;
     try { sock = create_connection(); }
     catch (const std::exception& e) {
@@ -80,18 +59,15 @@ int main() {
         return 1;
     }
     std::cout << "[INFO] Connected to receiver at " << SERVER_IP << ":" << PORT << "\n";
-
     std::string choice;
     while (true) {
         print_menu();
         std::getline(std::cin, choice);
-
         if (choice == "4") {
             send_frame(sock, "QUIT");
             std::cout << "Exiting...\n";
             break;
         }
-
         if (choice == "1") {
             std::string data, tmp;
             std::cout << "Enter text data: ";
@@ -99,12 +75,10 @@ int main() {
             std::cout << "Enter total frame size (e.g. 5): ";
             std::getline(std::cin, tmp);
             int frame_size = std::stoi(tmp);
-
             try {
                 auto frames = character_count_encode(data, frame_size);
                 std::string packed;
                 for (auto& f : frames) packed += f;
-
                 std::cout << "\n" << std::string(50, '=') << "\n";
                 std::cout << "Character Count Frames (sending):\n";
                 std::cout << std::string(50, '=') << "\n";
@@ -121,12 +95,10 @@ int main() {
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
         } else if (choice == "2") {
             std::string data;
             std::cout << "Enter text data (FLAG and ESC in data are handled): ";
             std::getline(std::cin, data);
-
             try {
                 std::string framed = byte_stuff(data);
                 std::cout << "\n" << std::string(60, '=') << "\n";
@@ -142,7 +114,6 @@ int main() {
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
         } else if (choice == "3") {
             std::string bits;
             std::cout << "Enter bit data (only 0s and 1s): ";
@@ -150,7 +121,6 @@ int main() {
             bits.erase(
                 std::remove_if(bits.begin(), bits.end(), [](char c){ return c == ' '; }),
                 bits.end());
-
             try {
                 std::string framed = bit_stuff(bits);
                 std::cout << "\n" << std::string(60, '=') << "\n";
@@ -165,12 +135,10 @@ int main() {
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] " << e.what() << "\n";
             }
-
         } else {
             std::cout << "Invalid choice. Enter 1-4.\n";
         }
     }
-
     closesocket(sock);
     return 0;
 }
