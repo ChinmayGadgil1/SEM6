@@ -40,7 +40,7 @@ def minimax(is_maximizing):
                     score = minimax(False)
                     board[row][col] = '_'
                     best_score = max(best_score, score)
-        return best_score
+        return best_score   
     else:
         best_score = float('inf')
         for row in range(3):

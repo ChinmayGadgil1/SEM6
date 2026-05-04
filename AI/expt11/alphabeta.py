@@ -16,7 +16,7 @@ def alphabeta(node, alpha, beta, tree, evals, depth=0):
             alpha = max(alpha, alphabeta(child, alpha, beta, tree, evals, depth+1))
             print(f"{indent}  a updated to {_f(alpha)}")
             if alpha >= beta:
-                print(f"{indent}  >> b-cutoff!")
+                print(f"{indent}  >> b-pruning")
                 return beta
         return alpha
     else:
@@ -25,7 +25,7 @@ def alphabeta(node, alpha, beta, tree, evals, depth=0):
             beta = min(beta, alphabeta(child, alpha, beta, tree, evals, depth+1))
             print(f"{indent}  b updated to {_f(beta)}")
             if alpha >= beta:
-                print(f"{indent}  >> a-cutoff!")
+                print(f"{indent}  >> a-pruning")
                 return alpha
         return beta
 
@@ -36,9 +36,6 @@ def _f(v):
 
 print("Alpha-Beta Pruning")
 print("==================")
-print("Enter the tree structure.")
-print("Example: root has children A,B  ->  type: root A,B")
-print("For leaf nodes, just press Enter (no children).")
 print()
 
 tree = {}
@@ -61,8 +58,6 @@ while True:
         val = int(input(f"  Value of leaf {node}: "))
         evals[node] = val
 
-print()
-print("Running Alpha-Beta...")
 print()
 result = alphabeta(root, -math.inf, math.inf, tree, evals)
 print()
