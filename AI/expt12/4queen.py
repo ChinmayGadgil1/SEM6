@@ -10,6 +10,7 @@ def is_safe(board, n):
 
 
 def swap(board, i, j):
+    global swaps
     board[i], board[j] = board[j], board[i]
     swaps += 1
 
@@ -24,8 +25,6 @@ def solve_n_queens_swap(board, l, r, n, solutions):
     else:
         for i in range(l, r):
             swap(board, l, i)
-            # print_board(board)
-            # print("\n")
             solve_n_queens_swap(board, l + 1, r, n, solutions)
             swap(board, l, i)
 
