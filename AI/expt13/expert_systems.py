@@ -27,110 +27,132 @@ def list_diseases(diseases):
 		print(f"- {name}: {', '.join(syms)}")
 
 
+def get_discriminating_symptoms(candidates, diseases):
+	
+	if not candidates:
+		return []
+	
+	symptom_scores = {}
+	
+	for symptom in set(s for d in candidates for s in diseases[d]):
+		have_symptom = sum(1 for d in candidates if symptom in diseases[d])
+		dont_have = len(candidates) - have_symptom
+		
+		if have_symptom > 0 and dont_have > 0:
+			balance = min(have_symptom, dont_have) / len(candidates)
+			symptom_scores[symptom] = balance
+		elif have_symptom > 0:
+			symptom_scores[symptom] = 0.01
+		elif dont_have > 0:
+			symptom_scores[symptom] = 0.01 
+	sorted_symptoms = sorted(symptom_scores.items(), key=lambda x: x[1], reverse=True)
+	print(f'  → Discriminating symptoms: {[s[0] + ": " + f"{s[1]:.2f}" for s in sorted_symptoms[:5]]}')
+ 
+    
+	return [s[0] for s in sorted_symptoms]
+
+
 def diagnose(diseases):
-    if not diseases:
-        print('No disease data available. Add diseases first.')
-        return
+	if not diseases:
+		print('No disease data available. Add diseases first.')
+		return
 
-    all_symptoms = []
 
-    for syms in diseases.values():
-        for s in syms:
-            if s not in all_symptoms:
-                all_symptoms.append(s)
+	positive_symptoms = set()
+	asked_symptoms = set()
+	candidates = set(diseases.keys())
+	question_count = 0
 
-    print('Please answer the following questions with y (yes) or n (no).')
-
-    positive = set()
-    negative = set()
-    candidates = set(diseases.keys())
-
-    try:
-        for symptom in all_symptoms:
-
-            prev_candidates = set(candidates)
-
-            ans = input(f'Do you have "{symptom}"? (y/n): ').strip().lower()
-
-            while ans not in ('y', 'n', 'yes', 'no'):
-                ans = input('Please enter y or n: ').strip().lower()
-
-            if ans.startswith('y'):
-                positive.add(symptom)
-                candidates = {
-                    d for d in candidates if symptom in diseases[d]
-                }
-            else:
-                negative.add(symptom)
-                candidates = {
-                    d for d in candidates if symptom not in diseases[d]
-                }
-
-            ruled_out = sorted(prev_candidates - candidates)
-
-            if ruled_out:
-                print(f'  Ruled out: {", ".join(ruled_out)}')
-
-            print(f'  Remaining candidates: {len(candidates)}')
-
-            # Early stopping if only one candidate remains
-            if len(candidates) == 1:
-                print(
-                    f'\nDiagnosis: {next(iter(candidates))} '
-                    '(only one candidate left)'
-                )
-                return
-
-            # No candidates left
-            if not candidates:
-                print(
-                    '\nNo matching disease found based on your answers. '
-                    'Stopping early.'
-                )
-                return
-
-    except (KeyboardInterrupt, EOFError):
-        print('\nInput cancelled.')
-        return
-
-    scores = []
-
-    for name in candidates:
-        syms = diseases[name]
-        syms_set = set(syms)
-
-        matched = len(syms_set & positive)
-
-        score = matched / len(syms) if syms else 0
-
-        scores.append((score, matched, name, syms))
-
-    if not scores:
-        print('No matching disease found based on the answers.')
-        return
-
-    scores.sort(reverse=True)
-
-    best_score, matched, best_name, best_syms = scores[0]
-
-    if best_score == 0:
-        print('No matching disease found based on the answers.')
-        return
-
-    top = [s for s in scores if s[0] == best_score]
-
-    print('\nPossible diagnosis:')
-
-    for score, matched, name, syms in top:
-
-        percent = int(score * 100)
-
-        common = list(set(syms) & positive)
-
-        print(f'- {name} ({percent}% match — {matched} matching symptoms)')
-
-        if common:
-            print(f'  Matching symptoms: {", ".join(common)}')
+	try:
+		while candidates:
+			discriminating = get_discriminating_symptoms(candidates, diseases)
+			
+			if not discriminating:
+				break
+			
+			unanswered = [s for s in discriminating if s not in asked_symptoms]
+			
+			if not unanswered:
+				unanswered = [s for s in set(s for d in candidates for s in diseases[d]) if s not in asked_symptoms]
+				if not unanswered:
+					break
+			
+			symptom = unanswered[0]
+			asked_symptoms.add(symptom)
+			question_count += 1
+			
+			print(f'[Question {question_count}] Do you have "{symptom}"? (y/n): ', end='')
+			ans = input().strip().lower()
+			
+			while ans not in ('y', 'n', 'yes', 'no'):
+				print('Please enter y or n: ', end='')
+				ans = input().strip().lower()
+			
+			prev_count = len(candidates)
+			
+			if ans.startswith('y'):
+				positive_symptoms.add(symptom)
+				candidates = {d for d in candidates if symptom in diseases[d]}
+			else:
+				candidates = {d for d in candidates if symptom not in diseases[d]}
+			
+			if len(candidates) < prev_count:
+				ruled_out = prev_count - len(candidates)
+				print(f'  → Eliminated {ruled_out} possibilities')
+			
+			print(f'  → Remaining candidates: {len(candidates)}\n')
+			
+			if len(candidates) == 1:
+				diagnosis = next(iter(candidates))
+				print('='*60)
+				print(f'DIAGNOSIS: {diagnosis}')
+				print(f'(Identified after {question_count} questions)')
+				print('='*60)
+				return
+			
+			if not candidates:
+				print('\n' + '='*60)
+				print('NO MATCHING DISEASE FOUND')
+				print('Your symptoms do not match any known disease in the database.')
+				print('='*60)
+				return
+		
+	
+	# 	if candidates:
+	# 		scores = []
+	# 		for name in candidates:
+	# 			syms_set = set(diseases[name])
+	# 			matched = len(syms_set & positive_symptoms)
+	# 			score = matched / len(syms_set) if syms_set else 0
+	# 			scores.append((score, matched, name, syms_set))
+			
+	# 		scores.sort(reverse=True, key=lambda x: (x[0], x[1]))
+			
+	# 		best_score = scores[0][0]
+	# 		top_diagnoses = [s for s in scores if s[0] == best_score]
+			
+	# 		print('='*60)
+	# 		print('POSSIBLE DIAGNOSES:')
+	# 		print('='*60)
+			
+	# 		for score, matched, name, syms in top_diagnoses:
+	# 			confidence = int(score * 100)
+	# 			common = list(syms & positive_symptoms)
+	# 			print(f'\n{name}')
+	# 			print(f'  Confidence: {confidence}%')
+	# 			print(f'  Matching symptoms: {matched}/{len(syms)}')
+	# 			if common:
+	# 				print(f'  You have: {", ".join(common)}')
+			
+	# 		print('='*60)
+	# 	else:
+	# 		print('\n' + '='*60)
+	# 		print('NO DIAGNOSIS POSSIBLE')
+	# 		print('='*60)
+	
+	except (KeyboardInterrupt, EOFError):
+		print('\n\nDiagnosis cancelled.')
+		return
 
 def main():
 	while True:
