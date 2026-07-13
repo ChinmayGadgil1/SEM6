@@ -1,132 +1,165 @@
-def get_graph_input():
-    graph = {}
-    heuristics = {}
-    n_nodes = int(input("Enter number of nodes: "))
-    for _ in range(n_nodes):
-        node = input("Node: ").strip()
-        heuristics[node] = int(input("Heuristic: "))
-        neighbors = input("Neighbors (space separated): ").strip().split()
-        graph[node] = {}
-        for nb in neighbors:
-            cost = int(input(f"Cost from {node} to {nb}: "))
-            graph[node][nb] = cost
-    return graph, heuristics
+goal = ""
+graph = {}
+heuristics = {}
+Nil = None
 
-def format_tuple(node, par, g, h):
-    p = par if par is not None else "nil"
-    return f"({node},{p},{g},{h},{g+h})"
 
-def print_lists(open_list, closed_list, heuristics, step):
-    col_w = 28
-    open_tuples   = [format_tuple(n, par, g, heuristics[n]) for n, par, g in open_list]
-    closed_tuples = [format_tuple(n, par, g, heuristics[n]) for n, par, g in closed_list]
-    max_rows = max(len(open_tuples), len(closed_tuples), 1)
-    print(f"\nStep {step}")
-    print(f"{'OPEN LIST':<{col_w}}  CLOSED LIST")
-    print("-" * (col_w * 2 + 2))
-    for i in range(max_rows):
-        left  = open_tuples[i]   if i < len(open_tuples)   else ""
-        right = closed_tuples[i] if i < len(closed_tuples) else ""
-        print(f"{left:<{col_w}}  {right}")
-    print("-" * (col_w * 2 + 2))
+def Head(list):
+    return list[0] if list else None
 
-def insert_open(open_list, node, par, g, heuristics):
-    f_new = g + heuristics[node]
-    for i, (n, p, gv) in enumerate(open_list):
-        if f_new <= gv + heuristics[n]:
-            open_list.insert(i, (node, par, g))
-            return
-    open_list.append((node, par, g))
 
-def update_open(open_list, node, par, g, heuristics):
-    for i, (n, p, gv) in enumerate(open_list):
-        if n == node:
-            open_list.pop(i)
-            break
-    insert_open(open_list, node, par, g, heuristics)
+def Tail(list):
+    return list[1:] if list else []
 
-def reconstruct_path(node, parent_map):
-    path = []
-    while node is not None:
-        path.append(node)
-        node = parent_map[node]
-    return list(reversed(path))
 
-def propagate_improvement(m, graph, heuristics, open_list, closed_list, parent_map, g):
-    for s in graph.get(m, {}).keys():
-        new_g = g[m] + graph[m][s]
-        if new_g < g.get(s, float('inf')):
-            parent_map[s] = m
-            g[s] = new_g
-            in_open   = any(n == s for n, _, _ in open_list)
-            in_closed = any(n == s for n, _, _ in closed_list)
-            if in_open:
-                update_open(open_list, s, parent_map[s], g[s], heuristics)
-            if in_closed:
-                for i, (n, p, gv) in enumerate(closed_list):
-                    if n == s:
-                        closed_list[i] = (s, parent_map[s], g[s])
-                        break
-                propagate_improvement(s, graph, heuristics, open_list, closed_list, parent_map, g)
+def Cons(item, list):
+    return [item] + list
 
-def astar(graph, heuristics, start, goal):
-    open_list   = []   
-    closed_list = []   
-    parent_map  = {}
-    g           = {}
 
-    g[start]          = 0
-    parent_map[start] = None
-    insert_open(open_list, start, None, 0, heuristics)
+def Append(list1, list2):
+    return list1 + list2
 
-    step = 0
 
-    while open_list:
-        step += 1
-        print_lists(open_list, closed_list, heuristics, step)
-        n, n_par, n_g = open_list.pop(0)
+def GoalTest(node):
+    return node == goal
 
-        closed_list.insert(0, (n, n_par, n_g))
 
-        if n == goal:
-            path = reconstruct_path(n, parent_map)
-            print(f"\nGOAL '{goal}' REACHED!")
-            print(f"PATH : {' -> '.join(path)}")
-            print(f"COST : {g[n]}")
-            return path
+def MoveGen(node):
+    return graph.get(node, [])
 
-        for m in graph.get(n, {}).keys():
-            k_n_m     = graph[n][m]
-            in_open   = any(nd == m for nd, _, _ in open_list)
-            in_closed = any(nd == m for nd, _, _ in closed_list)
 
-            if not in_open and not in_closed:
-                parent_map[m] = n
-                g[m]          = g[n] + k_n_m
-                insert_open(open_list, m, parent_map[m], g[m], heuristics)
+def h(node):
+    return heuristics.get(node, 99)
 
-            elif in_open:
-                if (g[n] + k_n_m) < g.get(m, float('inf')):
-                    parent_map[m] = n
-                    g[m]          = g[n] + k_n_m
-                    update_open(open_list, m, parent_map[m], g[m], heuristics)
 
-            elif in_closed:
-                if (g[n] + k_n_m) < g.get(m, float('inf')):
-                    parent_map[m] = n
-                    g[m]          = g[n] + k_n_m
-                    for i, (nd, p, gv) in enumerate(closed_list):
-                        if nd == m:
-                            closed_list[i] = (m, parent_map[m], g[m])
-                            break
-                    propagate_improvement(m, graph, heuristics, open_list, closed_list, parent_map, g)
+def FindNode(list, node):
+    return next((item for item in list if item[0] == node), Nil)
 
-    print("\nFAILURE: No path found.")
+
+def RemoveNode(list, node):
+    return [item for item in list if item[0] != node]
+
+
+def ReplaceNode(list, node, new_node):
+    return [new_node if item[0] == node else item for item in list]
+
+
+def Sort_f(list):
+    return sorted(list, key=lambda x: (x[4], x[3], x[0]))
+
+
+def ReconstructPath(nodepair, closed):
+    path = [nodepair[0]]
+    parent = nodepair[1]
+
+    while parent is not Nil:
+        path.append(parent)
+        node = next((item for item in closed if item[0] == parent), Nil)
+        parent = node[1] if node else Nil
+
+    path.reverse()
+    return path
+
+
+def PropagateImprovement(nodepair, open, closed):
+    neighbours = MoveGen(nodepair[0])
+
+    for child, cost in neighbours:
+        open_child = FindNode(open, child)
+        closed_child = FindNode(closed, child)
+        child_node = open_child if open_child is not Nil else closed_child
+
+        if child_node is not Nil and child_node[1] == nodepair[0]:
+            new_g = nodepair[2] + cost
+
+            if new_g < child_node[2]:
+                new_h = h(child)
+                updated_child = (child, nodepair[0], new_g, new_h, new_g + new_h)
+
+                if open_child is not Nil:
+                    open = ReplaceNode(open, child, updated_child)
+                else:
+                    closed = ReplaceNode(closed, child, updated_child)
+                    open, closed = PropagateImprovement(updated_child, open, closed)
+
+    return open, closed
+
+
+def AStarSearch(start):
+    start_h = h(start)
+    open = [(start, Nil, 0, start_h, start_h)]
+    closed = []
+    iteration = 1
+
+    while open:
+        open = Sort_f(open)
+        nodepair = Head(open)
+        node = nodepair[0]
+
+        print(f"\nIteration {iteration}:")
+        print("OPEN  :", str(open).replace("None", "Nil"))
+        print("CLOSED:", str(closed).replace("None", "Nil"))
+
+        if GoalTest(node):
+            print(f"\nIteration {iteration + 1}:")
+            print("Goal Found")
+            return ReconstructPath(nodepair, closed)
+
+        open = Tail(open)
+        closed = Cons(nodepair, closed)
+        neighbours = MoveGen(node)
+
+        for child, cost in neighbours:
+            new_g = nodepair[2] + cost
+            new_h = h(child)
+            new_f = new_g + new_h
+            new_node = (child, node, new_g, new_h, new_f)
+
+            open_child = FindNode(open, child)
+            closed_child = FindNode(closed, child)
+
+            if open_child is Nil and closed_child is Nil:
+                open = Append(open, [new_node])
+
+            elif open_child is not Nil:
+                if new_g < open_child[2]:
+                    open = ReplaceNode(open, child, new_node)
+
+            else:
+                if new_g < closed_child[2]:
+                    closed = ReplaceNode(closed, child, new_node)
+                    open, closed = PropagateImprovement(new_node, open, closed)
+
+        iteration += 1
+
     return None
 
 
-print("========== A* Algorithm ==========")
-graph, heuristics = get_graph_input()
-start = input("Start node: ").strip()
-goal  = input("Goal node: ").strip()
-astar(graph, heuristics, start, goal)
+def GetUserInput():
+    global goal, graph, heuristics
+    n = int(input("Enter the number of nodes: "))
+
+    for _ in range(n):
+        name = input("\nNode: ")
+        val = float(input("h(Node): "))  # Changed to float
+        children = input("Neighbors: ").split()
+
+        weighted_children = []
+        for child in children:
+            cost = float(input(f"cost({name}->{child}): "))  # Changed to float
+            weighted_children.append((child, cost))
+
+        heuristics[name] = val
+        graph[name] = weighted_children
+
+    start = input("\nEnter start node: ")
+    goal = input("Enter goal node: ")
+    return start
+
+start = GetUserInput()
+path = AStarSearch(start)
+
+if path:
+    print(f"\nPath: {' -> '.join(path)}")
+else:
+    print("\nNo path found.")

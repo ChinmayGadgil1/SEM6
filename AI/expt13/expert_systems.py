@@ -117,39 +117,6 @@ def diagnose(diseases):
 				print('='*60)
 				return
 		
-	
-	# 	if candidates:
-	# 		scores = []
-	# 		for name in candidates:
-	# 			syms_set = set(diseases[name])
-	# 			matched = len(syms_set & positive_symptoms)
-	# 			score = matched / len(syms_set) if syms_set else 0
-	# 			scores.append((score, matched, name, syms_set))
-			
-	# 		scores.sort(reverse=True, key=lambda x: (x[0], x[1]))
-			
-	# 		best_score = scores[0][0]
-	# 		top_diagnoses = [s for s in scores if s[0] == best_score]
-			
-	# 		print('='*60)
-	# 		print('POSSIBLE DIAGNOSES:')
-	# 		print('='*60)
-			
-	# 		for score, matched, name, syms in top_diagnoses:
-	# 			confidence = int(score * 100)
-	# 			common = list(syms & positive_symptoms)
-	# 			print(f'\n{name}')
-	# 			print(f'  Confidence: {confidence}%')
-	# 			print(f'  Matching symptoms: {matched}/{len(syms)}')
-	# 			if common:
-	# 				print(f'  You have: {", ".join(common)}')
-			
-	# 		print('='*60)
-	# 	else:
-	# 		print('\n' + '='*60)
-	# 		print('NO DIAGNOSIS POSSIBLE')
-	# 		print('='*60)
-	
 	except (KeyboardInterrupt, EOFError):
 		print('\n\nDiagnosis cancelled.')
 		return
