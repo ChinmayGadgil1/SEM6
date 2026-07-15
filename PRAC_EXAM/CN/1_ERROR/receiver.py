@@ -58,15 +58,18 @@ def main():
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("localhost", 9091))
     s.listen(1)
-    c, a = s.accept()
+    conn, a = s.accept()
     print(f"[Receiver] Connected from {a}")
     
     while True:
-        m = c.recv(1024).decode()
+        data = conn.recv(1024)
+        if not data:
+            print("[Receiver] Sender disconnected")
+            break
+
+        m = data.decode()
         if m == "QUIT":
             break
-        if not m:
-            continue
         
         try:
             p = m.split('|')
@@ -78,9 +81,9 @@ def main():
                 print(f"PARITY: {b} P={pr} {'✓' if ok else '✗'}")
             
             elif tag == "BP":
-                r, c, b, rp, cp = int(p[1]), int(p[2]), p[3], p[4], p[5]
-                ok = block_chk(b, r, c, rp, cp)
-                print(f"BLOCK({r}x{c}): {b} {'✓' if ok else '✗'}")
+                r, cols, b, rp, cp = int(p[1]), int(p[2]), p[3], p[4], p[5]
+                ok = block_chk(b, r, cols, rp, cp)
+                print(f"BLOCK({r}x{cols}): {b} {'✓' if ok else '✗'}")
             
             elif tag == "CR":
                 d, gen, rem, tx = p[1], p[2], p[3], p[4]
@@ -100,7 +103,7 @@ def main():
         except Exception as e:
             print(f"Error: {e}")
     
-    c.close()
+    conn.close()
     s.close()
 
 if __name__ == "__main__":
