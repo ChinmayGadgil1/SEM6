@@ -2,18 +2,28 @@ from collections import deque
 
 def bfs(miss, cann):
     visited = set()
-    queue = deque([(miss, cann, 'L', [(miss, cann, 'L')])])
-    visited.add((miss, cann, 'L'))
-    
+    parent = {}
+    start = (miss, cann, 'L')
+    queue = deque([start])
+    visited.add(start)
+    parent[start] = None
+
     while queue:
-        curr_miss, curr_cann, boat, path = queue.popleft()
-        
+        curr = queue.popleft()
+        curr_miss, curr_cann, boat = curr
+
         if curr_miss == 0 and curr_cann == 0 and boat == 'R':
+            path = []
+            s = curr
+            while s is not None:
+                path.append(s)
+                s = parent[s]
+            path.reverse()
             print("\nSolution Path:")
             for i, s in enumerate(path):
                 print(f"Step {i}: {s}")
             return path
-        
+
         if boat == 'L':
             next_states = [
                 (curr_miss-1, curr_cann, 'R'),
@@ -30,7 +40,7 @@ def bfs(miss, cann):
                 (curr_miss, curr_cann+1, 'L'),
                 (curr_miss, curr_cann+2, 'L')
             ]
-        
+
         for next_state in next_states:
             m, c, b = next_state
             if m < 0 or c < 0 or m > 3 or c > 3:
@@ -41,8 +51,9 @@ def bfs(miss, cann):
                 continue
             if next_state not in visited:
                 visited.add(next_state)
-                queue.append((m, c, b, path + [next_state]))
-    
+                parent[next_state] = curr
+                queue.append(next_state)
+
     return None
 
 miss = int(input("Enter no of missionaries: "))

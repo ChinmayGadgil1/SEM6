@@ -78,10 +78,11 @@ def BestFirstSearch(start):
         nodepair = Head(open_list)
         node = nodepair[0]
 
+        #*display code
         open_lines = FormatLine(open_list)
         closed_lines = FormatLine(closed_list)
+        # *end display
         max_idx = max(len(open_lines), len(closed_lines))
-
         for i in range(max_idx):
             prefix = f"{iteration}: " if i == 0 else "   "
             o_text = open_lines[i] if i < len(open_lines) else ""
