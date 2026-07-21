@@ -1,4 +1,3 @@
-import heapq
 from math import inf
 
 
@@ -16,47 +15,41 @@ def read_graph():
 
 
 def show_table(distances):
+    print("Router\tDistance")
     for node in sorted(distances):
         value = "INF" if distances[node] == inf else distances[node]
-        print(f"Router {node} --> {value}")
+        print(f"{node}\t{value}")
 
 
 def dijkstra(graph, start):
     distances = {node: inf for node in graph}
     distances[start] = 0
     visited = set()
-    heap = [(0, start)]
 
     print("\nInitial Routing Table")
     print("-" * 48)
     show_table(distances)
 
-    while heap:
-        current_distance, current_router = heapq.heappop(heap)
-        if current_router in visited:
-            continue
+    while len(visited) < len(graph):
+        current_router = None
+        current_distance = inf
+
+        for node in graph:
+            if node not in visited and distances[node] < current_distance:
+                current_distance = distances[node]
+                current_router = node
+
+        if current_router is None:
+            break
 
         visited.add(current_router)
-        print(f"\nProcessing Router {current_router}")
-        print("-" * 48)
+        print(f"\nAfter Processing Router {current_router}")
 
         for neighbor, cost in graph[current_router]:
-            print(f"Checking Path: {current_router} -> {neighbor}")
-            print(f"Link Cost = {cost}")
-
             new_distance = current_distance + cost
             if new_distance < distances[neighbor]:
-                old_distance = distances[neighbor]
                 distances[neighbor] = new_distance
-                print(f"Updating Router {neighbor}")
-                print(f"Old Distance = {old_distance if old_distance != inf else 'INF'}")
-                print(f"New Distance = {new_distance}")
-                heapq.heappush(heap, (new_distance, neighbor))
-            else:
-                print("No Update Required")
-            print()
 
-        print("Routing Table After Processing")
         print("-" * 48)
         show_table(distances)
 

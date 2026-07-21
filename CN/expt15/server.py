@@ -12,6 +12,8 @@ while True:
     client_message = conn.recv(1024).decode()
     if not client_message:
         break
+    if(client_message=='close'):
+        break
     print("Client:", client_message)
     # Send reply to client
     reply = input("Server: ")

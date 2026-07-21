@@ -14,9 +14,10 @@ def read_edges():
 
 
 def show_table(distance):
+    print("Router\tDistance")
     for node in range(len(distance)):
         value = "INF" if distance[node] == inf else distance[node]
-        print(f"Router {node} --> {value}")
+        print(f"{node}\t{value}")
 
 
 def bellman_ford(edges, vertices, source):
@@ -28,29 +29,17 @@ def bellman_ford(edges, vertices, source):
     show_table(distance)
 
     for iteration in range(vertices - 1):
-        print(f"\nIteration {iteration + 1}")
-        print("-" * 48)
-
         updated = False
         for u, v, w in edges:
             if distance[u] != inf and distance[u] + w < distance[v]:
-                old_distance = distance[v]
                 distance[v] = distance[u] + w
                 updated = True
 
-                print(f"Updating Router {v}")
-                print(f"Path: Router {u} -> Router {v}")
-                print(f"Edge Cost = {w}")
-                print(f"Old Distance = {old_distance if old_distance != inf else 'INF'}")
-                print(f"New Distance = {distance[v]}")
-                print()
-
-        print("Routing Table After Iteration")
+        print(f"\nAfter Iteration {iteration + 1}")
         print("-" * 48)
         show_table(distance)
 
         if not updated:
-            print("\nNo further updates possible.")
             break
 
     print("\nFinal Routing Table")
