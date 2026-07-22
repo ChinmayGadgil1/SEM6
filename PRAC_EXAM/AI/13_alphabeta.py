@@ -2,7 +2,6 @@ import math
 
 def alphabeta(node, alpha, beta, tree, evals, depth=0):
     children = tree.get(node, [])
-    
     if not children:
         return evals[node]
     
