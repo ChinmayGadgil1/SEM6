@@ -1,17 +1,28 @@
 import socket
-HOST = '127.0.0.1'
+
+HOST = "127.0.0.1"
 PORT = 12345
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect((HOST, PORT))
-print("Connected to server!")
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((HOST, PORT))
+server.listen(1)
+print("Waiting for client...")
+conn, addr = server.accept()
+print("Connected by", addr)
+
 while True:
-    # Send message
-    message = input("Client: ")
-    if(message=='close'):
-        client.send(message.encode())
-        client.close()
+    # Receive message from client
+    message = conn.recv(1024).decode()
+
+    if message == "close":
+        print("Client disconnected.")
+        conn.close()
         break
-    client.send(message.encode())
-    # Receive reply
-    server_reply = client.recv(1024).decode()
-    print("Server:", server_reply)
+
+    print("Client:", message)
+
+    # Send reply
+    reply = input("Server: ")
+    conn.send(reply.encode())
+
+server.close()
