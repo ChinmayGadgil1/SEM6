@@ -1,70 +1,55 @@
-def print_state(state):
+start=[
+    [1,0,4],
+    [2,5,7],
+    [3,6,8]
+]
+goal=[
+    [1,4,7],
+    [2,5,8],
+    [3,6,0]
+]
+
+
+def h(state):
+    count=0
     for i in range(3):
-        print(" ".join(str(state[i*3+j]) if state[i*3+j] else "-" for j in range(3)))
-    print()
+        for j in range(3):
+            if state[i][j]!=0 and state[i][j]==goal[i][j]:
+                count+=1
+                
+    return 8-count
 
-def h(state, goal):
-    return sum(1 for i, v in enumerate(state) if v != 0 and v != goal[i])
+def moveGen(state):
+    next_states=[]
+    for i in range(3):
+        for j in range(3):
+            if state[i][j]==0:
+                r=i
+                c=j
+    
+    new_states={
+        (r-1,c),
+        (r,c-1),
+        (r+1,c),
+        (r,c+1)
+    }
+    
+    for st in new_states:
+        newr=st[0]
+        newc=st[1]
+        if newr<0 or newc<0 or newr>2 or newc>2:
+            continue
+        new_state=state
+        new_state[newr][newc],new_state[r][c]=new_state[r][c],new_state[newr][newc]
+        next_states.append(new_states)
+    
+    return next_states
 
-def get_moves(state):
-    moves = []
-    idx = state.index(0)
-    row, col = divmod(idx, 3)
-    
-    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-        nr, nc = row + dr, col + dc
-        if 0 <= nr < 3 and 0 <= nc < 3:
-            new_idx = nr * 3 + nc
-            new_state = list(state)
-            new_state[idx], new_state[new_idx] = new_state[new_idx], new_state[idx]
-            moves.append(tuple(new_state))
-    
-    return moves
 
-def steepest_descent(start, goal):
-    node = start
-    path = [node]
-    visited = {node}
-    iteration = 1
-    
-    print("8-Puzzle Steepest Descent\n")
-    print_state(node)
-    
+def hillClimb(state):
+    path=[]
     while True:
-        neighbors = [n for n in get_moves(node) if n not in visited]
-        
-        if not neighbors:
-            print(f"Local optimum at iteration {iteration}")
+        path.append(state)
+        if h(start)==0:
             return path
         
-        best = min(neighbors, key=lambda x: h(x, goal))
-        best_h = h(best, goal)
-        
-        if best_h >= h(node, goal):
-            print(f"No improvement. Local optimum at iteration {iteration}")
-            return path
-        
-        node = best
-        path.append(node)
-        visited.add(node)
-        
-        print(f"Iteration {iteration}:")
-        print_state(node)
-        
-        if node == goal:
-            print("Goal reached!")
-            return path
-        
-        iteration += 1
-
-def input_matrix(prompt):
-    print(prompt)
-    matrix = []
-    for i in range(3):
-        row = list(map(int, input(f"Row {i+1}: ").split()))
-        matrix.extend(row)
-    return tuple(matrix)
-
-start = input_matrix("Start state:")
-goal = input_matrix("Goal state:")
-steepest_descent(start, goal)

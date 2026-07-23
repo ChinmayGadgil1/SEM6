@@ -10,7 +10,9 @@ def is_safe(board, n):
 def solve_queens(board, l, r, n, solutions):
     if l == r:
         if is_safe(board, n):
+            # !!!!!!!!!!!!!!!!
             solutions.append(board.copy())
+            # !!!!!!!!!!!!!!!!!!!!
     else:
         for i in range(l, r):
             board[l], board[i] = board[i], board[l]

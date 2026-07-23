@@ -1,0 +1,6 @@
+{
+    "Flu": ["fever", "cough", "body pain"],
+    "Common Cold": ["cough", "cold", "sneezing"],
+    "Malaria": ["fever", "chills", "headache"],
+    "Dengue": ["fever", "rash", "joint pain"]
+}

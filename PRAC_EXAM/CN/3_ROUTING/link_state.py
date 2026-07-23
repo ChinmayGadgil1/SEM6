@@ -1,74 +1,53 @@
-from math import inf
+INF = 999999
 
+vertices = int(input("Number of routers: "))
+edges = int(input("Number of links: "))
 
-def read_graph():
-    vertices = int(input("Number of routers: "))
-    edges = int(input("Number of links: "))
+graph = [[] for _ in range(vertices)]
 
-    graph = {i: [] for i in range(vertices)}
-    print("Enter each link as: source destination cost")
-    for _ in range(edges):
-        u, v, w = map(int, input().split())
-        graph[u].append((v, w))
-        graph[v].append((u, w))
-    return graph, vertices
+for _ in range(edges):
+    u, v, w = map(int, input("u v w : ").split())
+    graph[u].append((v, w))
+    graph[v].append((u, w))      # Remove this line if links are directed
 
+source = int(input("Start router: "))
 
-def show_table(distances):
-    print("Router\tDistance")
-    for node in sorted(distances):
-        value = "INF" if distances[node] == inf else distances[node]
-        print(f"{node}\t{value}")
+dist = [INF] * vertices
+visited = [False] * vertices
 
+dist[source] = 0
 
-def dijkstra(graph, start):
-    distances = {node: inf for node in graph}
-    distances[start] = 0
-    visited = set()
+for _ in range(vertices):
 
-    print("\nInitial Routing Table")
-    print("-" * 48)
-    show_table(distances)
+    # Find the unvisited router having minimum distance
+    current = -1
+    minimum = INF
 
-    while len(visited) < len(graph):
-        current_router = None
-        current_distance = inf
+    for i in range(vertices):
+        if not visited[i] and dist[i] < minimum:
+            minimum = dist[i]
+            current = i
 
-        for node in graph:
-            if node not in visited and distances[node] < current_distance:
-                current_distance = distances[node]
-                current_router = node
+    if current == -1:
+        break
 
-        if current_router is None:
-            break
+    visited[current] = True
 
-        visited.add(current_router)
-        print(f"\nAfter Processing Router {current_router}")
+    # Update distances of neighbours
+    for neighbour, cost in graph[current]:
+        if dist[current] + cost < dist[neighbour]:
+            dist[neighbour] = dist[current] + cost
 
-        for neighbor, cost in graph[current_router]:
-            new_distance = current_distance + cost
-            if new_distance < distances[neighbor]:
-                distances[neighbor] = new_distance
+    print("\nAfter processing router", current)
+    for i in range(vertices):
+        if dist[i] == INF:
+            print(i, "INF")
+        else:
+            print(i, dist[i])
 
-        print("-" * 48)
-        show_table(distances)
-
-    print("\nFinal Shortest Path Table")
-    print("-" * 48)
-    print("Destination Router\tShortest Distance")
-    for node in sorted(distances):
-        value = "INF" if distances[node] == inf else distances[node]
-        print(f"{node}\t\t\t{value}")
-
-
-def main():
-    graph, _ = read_graph()
-    start = int(input("Start router: "))
-    if start not in graph:
-        print("Invalid start router")
-        return
-    dijkstra(graph, start)
-
-
-if __name__ == "__main__":
-    main()
+print("\nFinal Routing Table")
+for i in range(vertices):
+    if dist[i] == INF:
+        print(i, "INF")
+    else:
+        print(i, dist[i])

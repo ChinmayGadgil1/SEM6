@@ -1,63 +1,40 @@
 from math import inf
 
+vertices = int(input("Number of routers: "))
+edges = int(input("Number of links: "))
 
-def read_edges():
-    vertices = int(input("Number of routers: "))
-    edges = int(input("Number of directed links: "))
+graph = []
 
-    edge_list = []
-    print("Enter each link as: source destination cost")
-    for _ in range(edges):
-        u, v, w = map(int, input().split())
-        edge_list.append((u, v, w))
-    return edge_list, vertices
+for _ in range(edges):
+    u, v, w = map(int, input("u v w : ").split())
+    graph.append((u, v, w))
 
-
-def show_table(distance):
-    print("Router\tDistance")
-    for node in range(len(distance)):
-        value = "INF" if distance[node] == inf else distance[node]
-        print(f"{node}\t{value}")
+source = int(input("Source router: "))
 
 
-def bellman_ford(edges, vertices, source):
-    distance = [inf] * vertices
-    distance[source] = 0
+def bellman_ford():
+    dist = [inf] * vertices
+    dist[source] = 0
 
-    print("\nInitial Routing Table")
-    print("-" * 48)
-    show_table(distance)
+    for i in range(vertices - 1):
 
-    for iteration in range(vertices - 1):
-        updated = False
-        for u, v, w in edges:
-            if distance[u] != inf and distance[u] + w < distance[v]:
-                distance[v] = distance[u] + w
-                updated = True
+        for u, v, w in graph:
+            if dist[u] != inf and dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
 
-        print(f"\nAfter Iteration {iteration + 1}")
-        print("-" * 48)
-        show_table(distance)
-
-        if not updated:
-            break
+        print(f"\nAfter Iteration {i + 1}")
+        for j in range(vertices):
+            if dist[j] == inf:
+                print(j, "INF")
+            else:
+                print(j, dist[j])
 
     print("\nFinal Routing Table")
-    print("-" * 48)
-    print("Destination Router\tMinimum Distance")
-    for node in range(vertices):
-        value = "INF" if distance[node] == inf else distance[node]
-        print(f"{node}\t\t\t{value}")
+    for i in range(vertices):
+        if dist[i] == inf:
+            print(i, "INF")
+        else:
+            print(i, dist[i])
 
 
-def main():
-    edges, vertices = read_edges()
-    source = int(input("Source router: "))
-    if source < 0 or source >= vertices:
-        print("Invalid source router")
-        return
-    bellman_ford(edges, vertices, source)
-
-
-if __name__ == "__main__":
-    main()
+bellman_ford()
