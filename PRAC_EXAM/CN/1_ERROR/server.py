@@ -19,14 +19,18 @@ def block_par(bits, r, c):
 
 # CRC
 def crc(data, gen):
-    w = list(data + '0' * (len(gen)-1))
+    data += '0' * (len(gen) - 1)
+    data = list(data)
 
-    for i in range(len(w)-len(gen)+1):
-        if w[i] == '1':
+    for i in range(len(data) - len(gen) + 1):
+        if data[i] == '1':
             for j in range(len(gen)):
-                w[i+j] = str(int(w[i+j]) ^ int(gen[j]))
+                if data[i + j] == gen[j]:
+                    data[i + j] = '0'
+                else:
+                    data[i + j] = '1'
 
-    return ''.join(w[-(len(gen)-1):])
+    return ''.join(data[-(len(gen) - 1):])
 
 
 # HAMMING
@@ -51,27 +55,18 @@ def hamming(bits):
 
 # CHECKSUM
 def checksum(bits):
+    if len(bits) % 16:
+        bits += '0' * (16 - len(bits) % 16)
 
-    if len(bits) % 8 != 0:
-        bits += '0' * (8 - len(bits) % 8)
+    total = 0
 
-    b = bytes(int(bits[i:i+8], 2) for i in range(0, len(bits), 8))
+    for i in range(0, len(bits), 16):
+        total += int(bits[i:i+16], 2)
 
-    s = 0
+    while total > 0xFFFF:
+        total = (total & 0xFFFF) + (total >> 16)
 
-    for i in range(0, len(b), 2):
-        if i + 1 < len(b):
-            word = (b[i] << 8) | b[i+1]
-        else:
-            word = (b[i] << 8)
-
-        s += word
-
-    while s >> 16:
-        s = (s & 0xFFFF) + (s >> 16)
-
-    return format((~s) & 0xFFFF, "04x")
-
+    return format(~total & 0xFFFF, "04x")
 
 # SERVER
 server = socket.socket()
