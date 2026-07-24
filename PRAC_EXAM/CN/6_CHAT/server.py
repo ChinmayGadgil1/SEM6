@@ -3,7 +3,7 @@ import socket
 HOST = "127.0.0.1"
 PORT = 12345
 
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server = socket.socket()
 server.bind((HOST, PORT))
 server.listen(1)
 print("Waiting for client...")

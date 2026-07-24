@@ -1,46 +1,55 @@
-import random
 import socket
-
+import random
 
 HOST = "127.0.0.1"
-RECEIVER_PORT = 5101
+PORT = 5100
+
 LOSS_RATE = 0.2
 ACK_LOSS_RATE = 0.2
 
+server = socket.socket()
+server.bind((HOST, PORT))
+server.listen(1)
 
-def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((HOST, RECEIVER_PORT))
-    expected = 0
+print("RECEIVER STARTED\n")
 
-    print("RECEIVER STARTED (GO-BACK-N)\n")
+conn, addr = server.accept()
+print("Connected:", addr)
 
-    while True:
-        data, sender_addr = sock.recvfrom(1024)
-        frame = data.decode()
-        print("RECEIVER: Frame arrived ->", frame)
-        seq = int(frame.split(":")[1])
+expected = 0
 
-        if random.random() < LOSS_RATE:
-            print("RECEIVER: Frame lost\n")
-            continue
+while True:
 
-        if seq == expected:
-            print("RECEIVER: Accepted frame", seq)
-            expected += 1
-            ack_num = expected - 1
-        else:
-            print("RECEIVER: Out-of-order frame discarded")
-            ack_num = expected - 1
+    data = conn.recv(1024)
 
-        ack = f"ACK:{ack_num}"
-        if random.random() < ACK_LOSS_RATE:
-            print("RECEIVER: ACK lost\n")
-            continue
+    if not data:
+        break
 
-        sock.sendto(ack.encode(), sender_addr)
-        print("RECEIVER: Sent cumulative ACK ->", ack, "\n")
+    frame = data.decode()
+    print("Received:", frame)
 
+    seq = int(frame.split(":")[1])
 
-if __name__ == "__main__":
-    main()
+    # Simulate frame loss
+    if random.random() < LOSS_RATE:
+        print("Frame lost\n")
+        continue
+
+    if seq == expected:
+        print("Accepted frame", seq)
+        expected += 1
+    else:
+        print("Out-of-order frame discarded")
+
+    ack = f"ACK:{expected-1}"
+
+    # Simulate ACK loss
+    if random.random() < ACK_LOSS_RATE:
+        print("ACK lost\n")
+        continue
+
+    conn.send(ack.encode())
+    print("Sent:", ack, "\n")
+
+conn.close()
+server.close()

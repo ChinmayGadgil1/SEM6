@@ -1,63 +1,71 @@
-import random
 import socket
-
+import random
 
 HOST = "127.0.0.1"
-RECEIVER_PORT = 5201
+PORT = 5200
+
 LOSS_RATE = 0.2
 ACK_LOSS_RATE = 0.2
+WINDOW_SIZE = 4
 
+server = socket.socket()
+server.bind((HOST, PORT))
+server.listen(1)
 
-def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((HOST, RECEIVER_PORT))
+print("RECEIVER STARTED\n")
 
-    base = 0
-    window_size = 4
-    received = {}
+conn, addr = server.accept()
+print("Connected:", addr)
 
-    print("RECEIVER STARTED (SELECTIVE REPEAT)\n")
+base = 0
+received = {}
 
-    while True:
-        data, sender_addr = sock.recvfrom(1024)
-        frame_str = data.decode()
-        print("RECEIVER: Frame arrived ->", frame_str)
-        seq = int(frame_str.split(":")[1])
+while True:
 
-        if random.random() < LOSS_RATE:
-            print("RECEIVER: Frame lost\n")
+    data = conn.recv(1024)
+
+    if not data:
+        break
+
+    frame = data.decode()
+    print("Received:", frame)
+
+    seq = int(frame.split(":")[1])
+
+    # Simulate frame loss
+    if random.random() < LOSS_RATE:
+        print("Frame lost\n")
+        continue
+
+    # Frame within the receiver's window
+    if base <= seq < base + WINDOW_SIZE:
+
+        if not received.get(seq, False):
+            print("Buffered frame", seq)
+            received[seq] = True
+
+        ack = f"ACK:{seq}"
+
+        # Simulate ACK loss
+        if random.random() < ACK_LOSS_RATE:
+            print("ACK lost\n")
             continue
 
-        if seq >= base and seq < base + window_size:
-            if not received.get(seq, False):
-                print(f"RECEIVER: Frame {seq} accepted and buffered")
-                received[seq] = True
-            else:
-                print(f"RECEIVER: Duplicate frame {seq}")
+        conn.send(ack.encode())
+        print("Sent:", ack)
 
-            ack = f"ACK:{seq}"
-            if random.random() < ACK_LOSS_RATE:
-                print("RECEIVER: ACK lost\n")
-                continue
+        # Deliver all consecutive frames
+        while received.get(base, False):
+            print("Delivered frame", base)
+            base += 1
 
-            sock.sendto(ack.encode(), sender_addr)
-            print("RECEIVER: ACK sent ->", ack)
+    # Duplicate frame
+    elif seq < base:
+        ack = f"ACK:{seq}"
+        conn.send(ack.encode())
+        print("Re-sent:", ack)
 
-            while received.get(base, False):
-                print("RECEIVER: Delivering frame", base)
-                base += 1
+    print()
 
-        elif seq < base:
-            print("RECEIVER: Old frame received again")
-            ack = f"ACK:{seq}"
-            sock.sendto(ack.encode(), sender_addr)
-            print("RECEIVER: Re-sent ACK ->", ack)
-
-        else:
-            print("RECEIVER: Frame outside window ignored")
-
-        print()
-
-
-if __name__ == "__main__":
-    main()
+conn.close()
+server.close()

@@ -1,61 +1,79 @@
-import random
 import socket
+import random
 import time
 
-
 HOST = "127.0.0.1"
-RECEIVER_PORT = 5001
+PORT = 5000
+
 LOSS_RATE = 0.2
 CORRUPT_RATE = 0.2
 ACK_LOSS_RATE = 0.2
 
+server = socket.socket()
+server.bind((HOST, PORT))
+server.listen(1)
 
-def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((HOST, RECEIVER_PORT))
-    expected = 0
+print("RECEIVER STARTED\n")
 
-    print("RECEIVER STARTED (STOP AND WAIT)\n")
+conn, addr = server.accept()
+print("Connected:", addr)
 
-    while True:
-        data, sender_addr = sock.recvfrom(1024)
-        frame = data.decode()
-        print("RECEIVER: Frame arrived ->", frame)
+expected = 0
 
-        seq = int(frame.split(":")[1])
+while True:
 
-        if random.random() < LOSS_RATE:
-            print("RECEIVER: Frame lost\n")
+    data = conn.recv(1024)
+
+    if not data:
+        break
+
+    frame = data.decode()
+    print("Received:", frame)
+
+    seq = int(frame.split(":")[1])
+
+    # Simulate frame loss
+    if random.random() < LOSS_RATE:
+        print("Frame lost\n")
+        continue
+
+    # Simulate corruption
+    if random.random() < CORRUPT_RATE:
+        nak = f"NAK:{seq}"
+        conn.send(nak.encode())
+        print("Frame corrupted")
+        print("Sent:", nak, "\n")
+        continue
+
+    # Correct frame
+    if seq == expected:
+
+        print("Correct frame received")
+
+        # Simulate delayed ACK
+        if random.random() < 0.2:
+            print("Delaying ACK...")
+            time.sleep(3)
+
+        ack = f"ACK:{seq}"
+
+        # Simulate ACK loss
+        if random.random() < ACK_LOSS_RATE:
+            print("ACK lost\n")
             continue
 
-        if random.random() < CORRUPT_RATE:
-            nak = f"NAK:{seq}"
-            print("RECEIVER: Frame corrupted")
-            sock.sendto(nak.encode(), sender_addr)
-            print("RECEIVER: NAK sent ->", nak, "\n")
-            continue
+        conn.send(ack.encode())
+        print("Sent:", ack, "\n")
 
-        if seq == expected:
-            print("RECEIVER: Correct frame received")
+        expected = 1 - expected
 
-            if random.random() < 0.2:
-                print("RECEIVER: Delaying ACK...")
-                time.sleep(3)
+    # Duplicate frame
+    else:
+        ack = f"ACK:{1 - expected}"
+        conn.send(ack.encode())
 
-            ack = f"ACK:{seq}"
-            if random.random() < ACK_LOSS_RATE:
-                print("RECEIVER: ACK lost\n")
-                continue
+        print("Duplicate frame")
+        print("Re-sent:", ack, "\n")
 
-            sock.sendto(ack.encode(), sender_addr)
-            print("RECEIVER: ACK sent ->", ack, "\n")
-            expected = 1 - expected
-        else:
-            ack = f"ACK:{1 - expected}"
-            print("RECEIVER: Duplicate frame")
-            sock.sendto(ack.encode(), sender_addr)
-            print("RECEIVER: Re-sent ACK ->", ack, "\n")
-
-
-if __name__ == "__main__":
-    main()
+conn.close()
+server.close()
